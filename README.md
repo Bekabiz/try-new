@@ -1,6 +1,15 @@
-# Evriel Systems — Premium Homepage
+# Evriel Systems — Cinematic Website
 
-A launch-ready React + Vite + GSAP redesign created as a separate project copy.
+A complete React/Vite homepage for Evriel Systems with a custom canvas-rendered 3D city and GSAP scroll storytelling.
+
+## What is inside
+
+- Scroll-controlled 3D city built entirely with JavaScript Canvas
+- No video files, image sequences, stock images, or external 3D assets
+- Responsive desktop and mobile layouts
+- Reduced-motion accessibility fallback
+- Evriel brand colors and real business content
+- Capabilities, systems, process, industries, about, and contact sections
 
 ## Run locally
 
@@ -9,20 +18,26 @@ npm install
 npm run dev
 ```
 
-## Build for production
+Open the local URL shown in the terminal.
+
+## Production build
 
 ```bash
 npm run build
 ```
 
-Deploy the generated project to Vercel by importing the folder/repository. The framework preset should be Vite and the build command should be `npm run build`.
+The deployable production output is generated in `dist/`.
 
-## Main files
+## Deploy to Vercel
 
-- `src/App.jsx` — all homepage sections and interactions
-- `src/styles.css` — complete visual system, responsive design, CSS 3D city
-- `index.html` — metadata and entry point
+1. Push this folder to a GitHub repository.
+2. Import the repository into Vercel.
+3. Framework preset: **Vite**.
+4. Build command: `npm run build`.
+5. Output directory: `dist`.
 
 ## Before launch
 
-Update the LinkedIn URL in the footer if needed. The main contact button currently opens an email to `contact@evrielsystems.com`.
+- Confirm `contact@evrielsystems.com` is the correct contact address.
+- Add analytics only after updating the privacy/cookie policy.
+- Replace or extend the project descriptions whenever public case-study details are approved.
