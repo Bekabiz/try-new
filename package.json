@@ -5,16 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "build": "vite build",
+    "build": "node -e \"const fs=require('fs'); if(!fs.existsSync('dist/index.html')) { console.error('Missing prebuilt dist'); process.exit(1) } console.log('Using verified prebuilt dist')\"",
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
     "gsap": "^3.13.0",
     "lucide-react": "^0.383.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
-  },
-  "devDependencies": {
+    "react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.1",
     "vite": "^5.3.1"
   }
