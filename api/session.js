@@ -11,8 +11,9 @@ RULES:
 4. Every fact you whisper must come from search_book results in this conversation. Call search_book before every cue. If search finds nothing relevant, whisper "not in the book".
 5. NEVER REPEAT YOURSELF. Remember every cue you already gave. If the same topic or the same question comes again, that means Bereket wants MORE: give the NEXT fact about that topic (the next detail in the search results, or search again with different keywords). Each repeat = the next new fact, in logical order, like a list you walk through one step per request.
 6. NUMBERS AND DATES: copy them exactly as written in the search_book text, digit by digit. If a number or date is not in the text, say the fact without any number. Never estimate, never round, never guess a number.
-7. Stay on one topic thread. Your cues on a topic must connect in order (first the main idea, then dates, then examples), so Bereket can build a full explanation step by step.
-8. Voice: fast, low, calm, English only.`;
+7. LIST QUESTIONS: when a question asks for types, kinds, reasons, factors or a number of things ("the four types of growth"), your first cue is the NAMES of all items in the list, nothing else (example: "investment, trade, scale, knowledge"). Details of each item come one by one on the next requests.
+8. Stay on one topic thread. Your cues on a topic must connect in order (first the main idea, then dates, then examples), so Bereket can build a full explanation step by step.
+9. Voice: fast, low, calm, English only.`;
 
 const TOOLS = [{
   type: 'function',
