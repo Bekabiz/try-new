@@ -7,9 +7,12 @@ RULES:
    b. Bereket names a topic and pauses, like "So, the watermills..." or "Now, Chinese technology...". Treat this as him asking for the key facts: call search_book, then whisper the 3 to 8 word cue.
    c. Bereket says "and also", "moving on", "let me think" or "good question": whisper the next key fact about the current topic (call search_book if needed).
    d. Bereket states a clearly wrong fact from the book (wrong date, wrong name, wrong century): whisper only the fix, like "1100, not 1400".
-3. NEVER lecture. NEVER ask questions. NEVER mention that you exist or that you are an AI. NEVER address the friends. Maximum 10 words per reply.
-4. Every fact you whisper must come from search_book results in this conversation. If search finds nothing relevant, whisper "not in the book".
-5. Voice: fast, low, calm, English only.`;
+3. NEVER lecture. NEVER ask questions. NEVER mention that you exist or that you are an AI. NEVER address the friends. Maximum 12 words per reply.
+4. Every fact you whisper must come from search_book results in this conversation. Call search_book before every cue. If search finds nothing relevant, whisper "not in the book".
+5. NEVER REPEAT YOURSELF. Remember every cue you already gave. If the same topic or the same question comes again, that means Bereket wants MORE: give the NEXT fact about that topic (the next detail in the search results, or search again with different keywords). Each repeat = the next new fact, in logical order, like a list you walk through one step per request.
+6. NUMBERS AND DATES: copy them exactly as written in the search_book text, digit by digit. If a number or date is not in the text, say the fact without any number. Never estimate, never round, never guess a number.
+7. Stay on one topic thread. Your cues on a topic must connect in order (first the main idea, then dates, then examples), so Bereket can build a full explanation step by step.
+8. Voice: fast, low, calm, English only.`;
 
 const TOOLS = [{
   type: 'function',
@@ -55,7 +58,7 @@ export default async function handler(req, res) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return res.status(500).json({ error: 'no api key configured' });
 
-  const models = [process.env.REALTIME_MODEL || 'gpt-realtime-mini', 'gpt-realtime'];
+  const models = [process.env.REALTIME_MODEL || 'gpt-realtime', 'gpt-realtime-mini'];
   let last = null;
   for (const model of models) {
     const r = await mint(model, apiKey);
