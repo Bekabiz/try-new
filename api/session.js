@@ -47,8 +47,8 @@ async function mint(model, apiKey) {
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
-  if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
-  const pin = String(req.body?.pin || '');
+  if (req.method !== 'POST' && req.method !== 'GET') return res.status(405).json({ error: 'POST only' });
+  const pin = String(req.body?.pin || req.query?.pin || '');
   if (!process.env.APP_PIN || pin !== process.env.APP_PIN) {
     return res.status(401).json({ error: 'wrong pin' });
   }
