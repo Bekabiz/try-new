@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Book Helper</title>
+<style>
+  :root { --bg:#0c0f14; --card:#161b24; --txt:#e8ecf2; --dim:#8b94a3; --acc:#4f8cff; --ok:#2ecc71; --bad:#e74c3c; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--bg); color:var(--txt); font-family:-apple-system,system-ui,sans-serif; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:16px; }
+  .card { background:var(--card); border-radius:20px; padding:28px 22px; width:100%; max-width:380px; text-align:center; }
+  h1 { font-size:19px; font-weight:600; margin-bottom:4px; }
+  .sub { color:var(--dim); font-size:13px; margin-bottom:22px; }
+  input { width:100%; background:#0e1219; border:1px solid #2a3140; color:var(--txt); border-radius:12px; padding:14px; font-size:18px; text-align:center; letter-spacing:6px; margin-bottom:14px; }
+  button { width:100%; border:0; border-radius:14px; padding:16px; font-size:17px; font-weight:600; cursor:pointer; }
+  #startBtn { background:var(--acc); color:#fff; }
+  #startBtn.live { background:var(--bad); }
+  #startBtn:disabled { opacity:.5; }
+  .row { display:flex; align-items:center; justify-content:center; gap:8px; margin:18px 0 6px; min-height:22px; }
+  .dot { width:10px; height:10px; border-radius:50%; background:var(--dim); }
+  .dot.on { background:var(--ok); box-shadow:0 0 8px var(--ok); }
+  #status { font-size:14px; color:var(--dim); }
+  #timer { font-size:13px; color:var(--dim); margin-bottom:10px; }
+  #cue { min-height:44px; font-size:15px; color:var(--acc); padding:10px; background:#0e1219; border-radius:12px; margin-top:12px; word-break:break-word; }
+  #cue:empty::before { content:'cues appear here'; color:#3a4254; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Book Helper</h1>
+  <div class="sub">The Lever of Riches · earphone mode</div>
+  <input id="pin" type="password" inputmode="numeric" placeholder="PIN" maxlength="8" autocomplete="off">
+  <button id="startBtn">Start</button>
+  <div class="row"><div class="dot" id="dot"></div><span id="status">off</span></div>
+  <div id="timer"></div>
+  <div id="cue"></div>
+</div>
+<script>
+let pc = null, dc = null, micStream = null, live = false, t0 = 0, timerIv = null, wantLive = false;
+const $ = id => document.getElementById(id);
+const setStatus = (s, on) => { $('status').textContent = s; $('dot').className = 'dot' + (on ? ' on' : ''); };
+
+$('startBtn').onclick = () => { if (live || wantLive) stop(); else start(); };
+
+async function start() {
+  wantLive = true;
+  $('startBtn').disabled = true;
+  try {
+    setStatus('getting session…', false);
+    const r = await fetch('/api/session', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pin: $('pin').value })
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || 'session failed');
+
+    setStatus('mic…', false);
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+
+    pc = new RTCPeerConnection();
+    micStream.getTracks().forEach(tr => pc.addTrack(tr, micStream));
+    pc.ontrack = e => { const a = new Audio(); a.srcObject = e.streams[0]; a.play(); window._aiAudio = a; };
+    dc = pc.createDataChannel('oai-events');
+    dc.onmessage = onEvent;
+    pc.onconnectionstatechange = () => {
+      if (['failed','disconnected','closed'].includes(pc.connectionState) && wantLive) {
+        cleanup(); setStatus('reconnecting…', false); setTimeout(() => { if (wantLive) start(); }, 1500);
+      }
+    };
+
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    setStatus('connecting…', false);
+    const sdp = await fetch('https://api.openai.com/v1/realtime/calls?model=' + encodeURIComponent(j.model), {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + j.secret, 'Content-Type': 'application/sdp' },
+      body: offer.sdp
+    });
+    if (!sdp.ok) throw new Error('webrtc connect failed (' + sdp.status + ')');
+    await pc.setRemoteDescription({ type: 'answer', sdp: await sdp.text() });
+
+    live = true; t0 = Date.now();
+    timerIv = setInterval(() => {
+      const s = Math.floor((Date.now() - t0) / 1000);
+      $('timer').textContent = String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0');
+    }, 1000);
+    setStatus('listening', true);
+    $('startBtn').textContent = 'Stop';
+    $('startBtn').classList.add('live');
+  } catch (e) {
+    wantLive = false; cleanup();
+    setStatus(e.message, false);
+  } finally {
+    $('startBtn').disabled = false;
+  }
+}
+
+async function onEvent(ev) {
+  let m; try { m = JSON.parse(ev.data); } catch { return; }
+  if (m.type === 'response.function_call_arguments.done') {
+    let q = '';
+    try { q = JSON.parse(m.arguments).query || ''; } catch {}
+    let output = '[]';
+    try {
+      const r = await fetch('/api/search', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ query: q }) });
+      const j = await r.json();
+      output = JSON.stringify(j.results || []);
+    } catch (e) { output = JSON.stringify([{ text: 'search unavailable' }]); }
+    dc.send(JSON.stringify({ type: 'conversation.item.create', item: { type: 'function_call_output', call_id: m.call_id, output } }));
+    dc.send(JSON.stringify({ type: 'response.create' }));
+  }
+  if (m.type === 'response.output_audio_transcript.done' || m.type === 'response.audio_transcript.done') {
+    const t = (m.transcript || '').trim();
+    if (t && t !== '.') $('cue').textContent = t;
+  }
+}
+
+function cleanup() {
+  if (timerIv) { clearInterval(timerIv); timerIv = null; }
+  if (dc) { try { dc.close(); } catch {} dc = null; }
+  if (pc) { try { pc.close(); } catch {} pc = null; }
+  if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
+  live = false;
+  $('startBtn').textContent = 'Start';
+  $('startBtn').classList.remove('live');
+}
+
+function stop() {
+  wantLive = false; cleanup(); setStatus('off', false); $('timer').textContent = '';
+}
+</script>
+</body>
+</html>
