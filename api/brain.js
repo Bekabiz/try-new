@@ -38,11 +38,12 @@ const VERIFY_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   properties: {
+    evidence: { type: ['string', 'null'] },
     wrong: { type: 'boolean' },
     fix: { type: ['string', 'null'] },
     p: { type: ['number', 'null'] },
   },
-  required: ['wrong', 'fix', 'p'],
+  required: ['evidence', 'wrong', 'fix', 'p'],
 };
 
 function routerPrompt(state) {
@@ -67,6 +68,7 @@ Rules:
 - Produce 5 to 10 facts about the request, ordered: fact 1 directly answers the request; then supporting details in logical teaching order (definition/main idea, dates, names, examples, significance).
 - Each fact is a telegraphic cue of AT MOST 12 words. No full sentences needed. No filler.
 - Copy every number, date, century and proper name EXACTLY as written in the excerpts, digit for digit. If a number is not in the excerpts, state the fact without a number. NEVER estimate or invent.
+- The excerpts contain OCR typos in words and names; write the correct standard spelling of well-known names (e.g. "Domesclay" is "Domesday"), but NEVER change any digit.
 - Each fact carries "p": the page number of the excerpt it came from.
 - LIST REQUESTS (types/kinds/reasons/factors/"the N ..."): fact 1 must be ONLY the names of all items, comma-separated. Then one fact per item with its detail, in order.
 - Every fact must state ACTUAL book content (a thing, date, name, mechanism, consequence). NEVER write meta-descriptions, outlines or category labels like "uses, numbers, spread" — that is forbidden.
@@ -74,7 +76,9 @@ Rules:
 - Do not repeat any fact whose meaning is already in AVOID (facts already spoken).`;
 
 const VERIFY_RULES = `You fact-check one spoken claim against excerpts from "The Lever of Riches" by Joel Mokyr. Use ONLY the excerpts.
-- Compare every date, number, century, name and attribution in the claim against the excerpts, one by one, digit by digit.
+- FIRST: copy into "evidence" the exact excerpt sentence(s) that talk about the same fact as the claim (null if the excerpts do not cover it).
+- The excerpts contain OCR typos; a near-identical name is the same thing (e.g. "Domesclay Book" = "Domesday Book"). Digits are reliable.
+- THEN compare every date, number, century, name and attribution in the claim against the evidence, one by one, digit by digit.
 - wrong=true if the excerpts give a DIFFERENT value for the same fact (e.g. claim says 1286 but excerpt says 1086; claim says Watt but excerpt says Savery). A single wrong digit makes it wrong.
 - If wrong, "fix" is the correction in at most 8 words, using the exact value from the excerpts (e.g. "1086, not 1286" or "Savery, not Watt"), and "p" its page.
 - wrong=false only if the excerpts agree with the claim, or genuinely do not cover it.`;
