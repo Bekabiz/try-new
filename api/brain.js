@@ -69,13 +69,15 @@ Rules:
 - Copy every number, date, century and proper name EXACTLY as written in the excerpts, digit for digit. If a number is not in the excerpts, state the fact without a number. NEVER estimate or invent.
 - Each fact carries "p": the page number of the excerpt it came from.
 - LIST REQUESTS (types/kinds/reasons/factors/"the N ..."): fact 1 must be ONLY the names of all items, comma-separated. Then one fact per item with its detail, in order.
+- Every fact must state ACTUAL book content (a thing, date, name, mechanism, consequence). NEVER write meta-descriptions, outlines or category labels like "uses, numbers, spread" — that is forbidden.
 - If the excerpts do not actually cover the request, return found=false with empty facts.
 - Do not repeat any fact whose meaning is already in AVOID (facts already spoken).`;
 
 const VERIFY_RULES = `You fact-check one spoken claim against excerpts from "The Lever of Riches" by Joel Mokyr. Use ONLY the excerpts.
-- wrong=true ONLY if the excerpts clearly contradict the claim (different date, number, century, name, or attribution).
-- If wrong, "fix" is the correction in at most 8 words, using the exact value from the excerpts (e.g. "1680s, not 1750" or "Savery, not Watt"), and "p" its page.
-- If the excerpts support the claim, or do not cover it, wrong=false.`;
+- Compare every date, number, century, name and attribution in the claim against the excerpts, one by one, digit by digit.
+- wrong=true if the excerpts give a DIFFERENT value for the same fact (e.g. claim says 1286 but excerpt says 1086; claim says Watt but excerpt says Savery). A single wrong digit makes it wrong.
+- If wrong, "fix" is the correction in at most 8 words, using the exact value from the excerpts (e.g. "1086, not 1286" or "Savery, not Watt"), and "p" its page.
+- wrong=false only if the excerpts agree with the claim, or genuinely do not cover it.`;
 
 function freshState() {
   return { topics: {}, cues: [], current: null, recent: [] };
@@ -99,27 +101,27 @@ AVOID (already spoken): ${avoid.length ? avoid.join(' // ') : '(none)'}
 
 BOOK EXCERPTS:
 ${ctx.text}`;
-  const { out } = await llm({
+  const { out, model } = await llm({
     models: EXTRACT_MODELS,
     system: EXTRACT_RULES,
     user,
     schema: EXTRACT_SCHEMA,
-    maxTokens: 900,
+    maxTokens: 3000,
   });
   const facts = (out.facts || [])
     .map(f => ({ t: clampWords(f.t, 12), p: Number(f.p) || ctx.pages[0] }))
     .filter(f => f.t);
-  return { found: !!out.found && facts.length > 0, facts };
+  return { found: !!out.found && facts.length > 0, facts, model, pages: ctx.pages };
 }
 
-function speakResponse(res, state, cue, page, why) {
+function speakResponse(res, state, cue, page, why, dbg) {
   state.cues.push(cue);
   state.cues = state.cues.slice(-80);
-  return res.status(200).json({ speak: true, cue, page: page || null, why, state });
+  return res.status(200).json({ speak: true, cue, page: page || null, why, state, ...(dbg && Object.keys(dbg).length ? { debug: dbg } : {}) });
 }
 
-function silentResponse(res, state, why) {
-  return res.status(200).json({ speak: false, why, state });
+function silentResponse(res, state, why, dbg) {
+  return res.status(200).json({ speak: false, why, state, ...(dbg && Object.keys(dbg).length ? { debug: dbg } : {}) });
 }
 
 export default async function handler(req, res) {
@@ -129,6 +131,8 @@ export default async function handler(req, res) {
   if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: 'no api key configured' });
 
   const utterance = String(req.body?.utterance || '').trim().slice(0, 600);
+  const debug = !!req.body?.debug;
+  const dbg = {};
   const state = req.body?.reset ? freshState() : normState(req.body?.state);
   if (!utterance) return silentResponse(res, state, 'empty');
 
@@ -153,10 +157,11 @@ export default async function handler(req, res) {
         maxTokens: 150,
       });
       route = r.out;
+      if (debug) dbg.route = { ...route, model: r.model };
     }
 
     if (route.action === 'silent' || (!route.key && !route.claim)) {
-      return silentResponse(res, state, 'router-silent');
+      return silentResponse(res, state, 'router-silent', dbg);
     }
 
     // 2. Fact-check path
@@ -164,19 +169,21 @@ export default async function handler(req, res) {
       if (!/\d|century|thousand|hundred|million/i.test(utterance) && !/invent|discover|built|wrote|introduc/i.test(utterance)) {
         return silentResponse(res, state, 'check-skipped');
       }
-      const ctx = contextFor(route.query || route.claim || utterance, 0);
+      const ctx = contextFor((route.query || '') + ' ' + (route.claim || utterance), 0);
       if (!ctx.text) return silentResponse(res, state, 'check-no-context');
-      const { out } = await llm({
+      const v = await llm({
         models: EXTRACT_MODELS,
         system: VERIFY_RULES,
-        user: `CLAIM: ${route.claim || utterance}\n\nBOOK EXCERPTS:\n${ctx.text}`,
+        user: `SPOKEN: ${utterance}\nCLAIM TO CHECK: ${route.claim || utterance}\n\nBOOK EXCERPTS:\n${ctx.text}`,
         schema: VERIFY_SCHEMA,
-        maxTokens: 120,
+        maxTokens: 2000,
       });
+      const out = v.out;
+      if (debug) dbg.verify = { ...out, model: v.model, ctxPages: ctx.pages };
       if (out.wrong && out.fix) {
-        return speakResponse(res, state, clampWords(out.fix, 12), out.p, 'correction');
+        return speakResponse(res, state, clampWords(out.fix, 12), out.p, 'correction', dbg);
       }
-      return silentResponse(res, state, 'claim-ok');
+      return silentResponse(res, state, 'claim-ok', dbg);
     }
 
     // 3. Cue path with code-enforced memory
@@ -190,9 +197,11 @@ export default async function handler(req, res) {
     if (!topic) {
       // New topic/question: extract an ordered fact list from the whole book.
       const request = `${route.key || ''} — ${utterance}`;
-      const { found, facts } = await extractFacts(request, !!route.list, state.cues.slice(-20), 0);
+      const ex = await extractFacts(request, !!route.list, state.cues.slice(-20), 0);
+      const { found, facts } = ex;
+      if (debug) dbg.extract = { model: ex.model, pages: ex.pages, found };
       if (!found) {
-        return speakResponse(res, state, 'not in the book', null, 'not-found');
+        return speakResponse(res, state, 'not in the book', null, 'not-found', dbg);
       }
       topic = { facts, given: 0, round: 0, req: request, list: !!route.list };
       state.topics[key] = topic;
@@ -221,7 +230,7 @@ export default async function handler(req, res) {
 
     const fact = topic.facts[topic.given];
     topic.given++;
-    return speakResponse(res, state, fact.t, fact.p, topic.given === 1 ? 'first-fact' : 'next-fact');
+    return speakResponse(res, state, fact.t, fact.p, topic.given === 1 ? 'first-fact' : 'next-fact', dbg);
   } catch (e) {
     // Fail safe: stay silent rather than break the session.
     return res.status(200).json({ speak: false, why: 'error', error: String(e.message || e), state });
