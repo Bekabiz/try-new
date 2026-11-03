@@ -76,7 +76,7 @@ export function checkPin(req, res) {
 }
 
 // OpenAI chat call with JSON schema output and model fallback.
-export async function llm({ models, system, user, schema, maxTokens = 500 }) {
+export async function llm({ models, system, user, schema, maxTokens = 500, reasoning = 'minimal' }) {
   const apiKey = process.env.OPENAI_API_KEY;
   let lastErr = null;
   for (const model of models) {
@@ -92,7 +92,7 @@ export async function llm({ models, system, user, schema, maxTokens = 500 }) {
         json_schema: { name: 'out', strict: true, schema },
       },
     };
-    if (/^gpt-5/.test(model)) body.reasoning_effort = 'minimal';
+    if (/^gpt-5/.test(model)) body.reasoning_effort = reasoning;
     else body.temperature = 0;
     try {
       const r = await fetch('https://api.openai.com/v1/chat/completions', {

@@ -80,6 +80,7 @@ const VERIFY_RULES = `You fact-check one spoken claim against excerpts from "The
 - The excerpts contain OCR typos; a near-identical name is the same thing (e.g. "Domesclay Book" = "Domesday Book"). Digits are reliable.
 - THEN compare every date, number, century, name and attribution in the claim against the evidence, one by one, digit by digit.
 - wrong=true if the excerpts give a DIFFERENT value for the same fact (e.g. claim says 1286 but excerpt says 1086; claim says Watt but excerpt says Savery). A single wrong digit makes it wrong.
+- ATTRIBUTION: if the claim credits an invention, discovery or act to one person and the evidence names a DIFFERENT person, wrong=true and fix="<correct person>, not <claimed person>". Example: claim "invented by James Watt", evidence "invented by John Kay" -> wrong=true, fix "John Kay, not Watt".
 - If wrong, "fix" is the correction in at most 8 words, using the exact value from the excerpts (e.g. "1086, not 1286" or "Savery, not Watt"), and "p" its page.
 - wrong=false only if the excerpts agree with the claim, or genuinely do not cover it.`;
 
@@ -180,7 +181,8 @@ export default async function handler(req, res) {
         system: VERIFY_RULES,
         user: `SPOKEN: ${utterance}\nCLAIM TO CHECK: ${route.claim || utterance}\n\nBOOK EXCERPTS:\n${ctx.text}`,
         schema: VERIFY_SCHEMA,
-        maxTokens: 2000,
+        maxTokens: 4000,
+        reasoning: 'low',
       });
       const out = v.out;
       if (debug) dbg.verify = { ...out, model: v.model, ctxPages: ctx.pages };
