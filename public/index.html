@@ -42,7 +42,7 @@
 </div>
 <script>
 let pc = null, dc = null, micStream = null, live = false, t0 = 0, timerIv = null, wantLive = false;
-let retries = 0, wakeLock = null, player = null;
+let retries = 0, wakeLock = null, player = null, reconnectTo = null;
 let state = loadState();
 let queue = Promise.resolve(); // serialize brain calls so memory stays consistent
 
@@ -77,7 +77,11 @@ async function start() {
       body: JSON.stringify({ pin: $('pin').value })
     });
     const j = await r.json();
-    if (!r.ok) throw new Error(j.error || 'session failed');
+    if (!r.ok) {
+      const err = new Error(j.error || 'session failed');
+      if (r.status === 401 || r.status === 400) err.fatal = true;
+      throw err;
+    }
 
     setStatus('mic…', false);
     if (!micStream) {
@@ -116,8 +120,13 @@ async function start() {
     $('startBtn').classList.add('live');
     try { wakeLock = await navigator.wakeLock.request('screen'); } catch {}
   } catch (e) {
-    cleanup(false);
-    if (wantLive) { reconnect(e.message); } else { setStatus(e.message, false); }
+    if (e.fatal || e.name === 'NotAllowedError' || e.name === 'NotFoundError') {
+      wantLive = false; cleanup(true);
+      setStatus(e.name === 'NotAllowedError' ? 'mic permission denied' : e.message, false);
+    } else {
+      cleanup(false);
+      if (wantLive) { reconnect(e.message); } else { setStatus(e.message, false); }
+    }
   } finally {
     $('startBtn').disabled = false;
   }
@@ -129,7 +138,8 @@ function reconnect(msg) {
   if (retries > 30) { wantLive = false; setStatus('gave up: ' + (msg || 'connection lost'), false); return; }
   const delay = Math.min(1000 * Math.pow(1.6, Math.min(retries, 8)), 15000);
   setStatus('reconnecting… (' + retries + ')', false);
-  setTimeout(() => { if (wantLive) start(); }, delay);
+  if (reconnectTo) clearTimeout(reconnectTo);
+  reconnectTo = setTimeout(() => { reconnectTo = null; if (wantLive) start(); }, delay);
 }
 
 function onEvent(ev) {
@@ -198,6 +208,7 @@ function cleanup(resetUi = true) {
 
 function stop() {
   wantLive = false; retries = 0;
+  if (reconnectTo) { clearTimeout(reconnectTo); reconnectTo = null; }
   cleanup(true);
   setStatus('off', false); $('timer').textContent = '';
 }
